@@ -25,8 +25,10 @@ import {
   TrendingDown,
   TrendingUp,
 } from 'lucide-react';
+import { historicalRates, type HistoryRow } from './rate-history';
 
 type Signal = 'n' | 'c' | 'x';
+type ChartWindow = '10d' | '1m' | '3m';
 
 type DemoRow = {
   d: string;
@@ -106,6 +108,23 @@ const demoRows: DemoRow[] = [
   { d: '2026-07-03', r: 6.1357, s: 'x', p: 10, w: -0.2, t: 1, q: 39 },
 ];
 
+const rateHistory: HistoryRow[] = [
+  ...historicalRates,
+  ...demoRows.map(({ d, r }) => ({ d, r })),
+];
+
+const windowOptions: Array<{
+  id: ChartWindow;
+  label: string;
+  before: number;
+  after: number;
+  note: string;
+}> = [
+  { id: '10d', label: '10Д', before: 5, after: 5, note: '5 дней до · 5 дней после' },
+  { id: '1m', label: '1М', before: 25, after: 5, note: '25 дней до · 5 дней после' },
+  { id: '3m', label: '3М', before: 85, after: 5, note: '85 дней до · 5 дней после' },
+];
+
 const signalContent = {
   n: {
     eyebrow: 'Сигнал модели',
@@ -157,7 +176,7 @@ function compactDate(value: string) {
   return shortDate.format(asDate(value)).replace('.', '');
 }
 
-function RateTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: DemoRow }> }) {
+function RateTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: HistoryRow }> }) {
   if (!active || !payload?.[0]) return null;
   const row = payload[0].payload;
 
@@ -171,15 +190,32 @@ function RateTooltip({ active, payload }: { active?: boolean; payload?: Array<{ 
 
 export default function Home() {
   const [selectedDate, setSelectedDate] = useState('2026-06-02');
+  const [chartWindow, setChartWindow] = useState<ChartWindow>('1m');
   const selectedIndex = Math.max(0, demoRows.findIndex((row) => row.d === selectedDate));
   const selected = demoRows[selectedIndex];
   const state = signalContent[selected.s];
   const SignalIcon = state.icon;
+  const historyIndex = rateHistory.findIndex((row) => row.d === selectedDate);
+  const activeWindow = windowOptions.find((option) => option.id === chartWindow) ?? windowOptions[1];
 
   const chartRows = useMemo(
-    () => demoRows.slice(Math.max(0, selectedIndex - 5), Math.min(demoRows.length, selectedIndex + 6)),
-    [selectedIndex],
+    () => rateHistory.slice(
+      Math.max(0, historyIndex - activeWindow.before),
+      Math.min(rateHistory.length, historyIndex + activeWindow.after + 1),
+    ),
+    [activeWindow.after, activeWindow.before, historyIndex],
   );
+
+  const threeMonthRows = useMemo(
+    () => rateHistory.slice(Math.max(0, historyIndex - 89), historyIndex + 1),
+    [historyIndex],
+  );
+  const threeMonthMin = Math.min(...threeMonthRows.map((row) => row.r));
+  const threeMonthMax = Math.max(...threeMonthRows.map((row) => row.r));
+  const rangeSpan = Math.max(threeMonthMax - threeMonthMin, 0.0001);
+  const rangePosition = Math.min(100, Math.max(0, ((selected.r - threeMonthMin) / rangeSpan) * 100));
+  const threeMonthChange = ((selected.r / threeMonthRows[0].r) - 1) * 100;
+  const chartChange = ((selected.r / chartRows[0].r) - 1) * 100;
 
   const moveDate = (step: number) => {
     const next = Math.min(demoRows.length - 1, Math.max(0, selectedIndex + step));
@@ -220,16 +256,22 @@ export default function Home() {
                 description: 'Дата из демо-диапазона в формате YYYY-MM-DD.',
                 enum: demoRows.map((row) => row.d),
               },
+              window: {
+                type: 'string',
+                description: 'Масштаб графика: 10 дней, 1 месяц или 3 месяца.',
+                enum: windowOptions.map((option) => option.id),
+              },
             },
             required: ['date'],
             additionalProperties: false,
           },
           annotations: { readOnlyHint: false, untrustedContentHint: false },
           execute(input) {
-            const date = (input as { date?: unknown })?.date;
+            const { date, window } = input as { date?: unknown; window?: unknown };
             const row = demoRows.find((item) => item.d === date);
             if (!row) throw new Error('Дата вне демо-диапазона');
             setSelectedDate(row.d);
+            if (window === '10d' || window === '1m' || window === '3m') setChartWindow(window);
             return {
               date: row.d,
               signal: row.s === 'n' ? 'favorable_now' : row.s === 'c' ? 'window_closing' : 'no_signal',
@@ -363,10 +405,31 @@ export default function Home() {
               <div className="card-kicker">Динамика вокруг даты</div>
               <h2 id="chart-title">Сколько тенге за 1 рубль</h2>
             </div>
-            <div className="rate-now">
-              <strong>{selected.r.toFixed(2).replace('.', ',')} ₸</strong>
-              <span>на выбранную дату</span>
+            <div className="chart-summary">
+              <div className="rate-now">
+                <strong>{selected.r.toFixed(2).replace('.', ',')} ₸</strong>
+                <span>на выбранную дату</span>
+              </div>
+              <span className={`period-change ${chartChange >= 0 ? 'positive' : 'negative'}`}>
+                {chartChange >= 0 ? '+' : ''}{chartChange.toFixed(2).replace('.', ',')}%
+              </span>
             </div>
+          </div>
+          <div className="timeframe-row">
+            <div className="timeframe-switcher" aria-label="Масштаб графика">
+              {windowOptions.map((option) => (
+                <button
+                  className={chartWindow === option.id ? 'active' : ''}
+                  type="button"
+                  key={option.id}
+                  onClick={() => setChartWindow(option.id)}
+                  aria-pressed={chartWindow === option.id}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <span>изменение от начала окна</span>
           </div>
           <div className="chart-wrap" role="img" aria-label={`График курса вокруг ${ruDate.format(asDate(selected.d))}`}>
             <ResponsiveContainer
@@ -384,7 +447,7 @@ export default function Home() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid stroke="#e8eaed" strokeDasharray="2 5" vertical={false} />
-                <XAxis dataKey="d" tickFormatter={compactDate} axisLine={false} tickLine={false} tick={{ fill: '#7b8490', fontSize: 12 }} dy={10} />
+                <XAxis dataKey="d" tickFormatter={compactDate} axisLine={false} tickLine={false} tick={{ fill: '#7b8490', fontSize: 12 }} dy={10} minTickGap={32} />
                 <YAxis domain={['dataMin - 0.05', 'dataMax + 0.05']} axisLine={false} tickLine={false} tick={{ fill: '#9aa2ac', fontSize: 12 }} tickFormatter={(value) => Number(value).toFixed(1)} />
                 <Tooltip content={<RateTooltip />} cursor={{ stroke: '#b8bec6', strokeDasharray: '3 4' }} />
                 <ReferenceLine x={selected.d} stroke="#151d28" strokeDasharray="4 4" strokeWidth={1.5} />
@@ -395,7 +458,33 @@ export default function Home() {
           <div className="chart-legend">
             <span><i className="legend-line" />Исторический курс</span>
             <span><i className="legend-marker" />Выбранная дата</span>
-            <span className="window-note">5 дней до · 5 дней после</span>
+            <span className="window-note">{activeWindow.note}</span>
+          </div>
+          <div className="range-panel" aria-label="Диапазон курса за 3 месяца">
+            <div className="range-head">
+              <div>
+                <div className="card-kicker">3 месяца до выбранной даты</div>
+                <strong>Позиция курса в диапазоне</strong>
+              </div>
+              <div className={`range-change ${threeMonthChange >= 0 ? 'positive' : 'negative'}`}>
+                {threeMonthChange >= 0 ? <TrendingUp size={17} /> : <TrendingDown size={17} />}
+                {threeMonthChange >= 0 ? '+' : ''}{threeMonthChange.toFixed(1).replace('.', ',')}%
+              </div>
+            </div>
+            <div className="range-metrics">
+              <div><span>Минимум</span><strong>{threeMonthMin.toFixed(2).replace('.', ',')} ₸</strong></div>
+              <div className="range-current"><span>Выбранный курс</span><strong>{selected.r.toFixed(2).replace('.', ',')} ₸</strong></div>
+              <div><span>Максимум</span><strong>{threeMonthMax.toFixed(2).replace('.', ',')} ₸</strong></div>
+            </div>
+            <div className="range-track" aria-hidden="true">
+              <div className="range-fill" style={{ width: `${rangePosition}%` }} />
+              <i className="range-marker-dot" style={{ left: `${rangePosition}%` }} />
+            </div>
+            <div className="range-caption">
+              <span>{compactDate(threeMonthRows[0].d)}</span>
+              <span>выше минимума на {((selected.r / threeMonthMin - 1) * 100).toFixed(1).replace('.', ',')}%</span>
+              <span>{compactDate(selected.d)}</span>
+            </div>
           </div>
         </section>
 
