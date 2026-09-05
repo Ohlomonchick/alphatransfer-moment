@@ -15,6 +15,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: 'AlphaTransfer — выгодный момент для перевода',
   description: 'Демонстрация исторических сигналов курса RUB → KZT с объяснением модели.',
+  icons: { icon: '/favicon.svg' },
 };
 
 export default function RootLayout({
