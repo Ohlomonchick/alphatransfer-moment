@@ -20,7 +20,7 @@ const windowOptions = [
 
 const stateContent = {
   now: { eyebrow: 'Уведомление о курсе', chip: 'Push · факт о курсе', delivery: 'Пользователь получает уведомление', accent: '#13a463', soft: '#eaf8f1', icon: Check },
-  closing: { eyebrow: 'Уведомление о курсе', chip: 'Push · динамика изменилась', delivery: 'Пользователь получает обновлённый текст', accent: '#e46b1a', soft: '#fff3e9', icon: TrendingDown },
+  closing: { eyebrow: 'Уточнение к сигналу NOW', chip: 'Не отдельный пуш · CLOSING', delivery: 'Уточняет уже выбранный контакт NOW', accent: '#e46b1a', soft: '#fff3e9', icon: TrendingUp },
   none: { eyebrow: 'Состояние курса', chip: 'Без пуша', delivery: 'Проактивного уведомления нет', accent: '#657181', soft: '#eef1f4', icon: CircleMinus },
   'no-session': { eyebrow: 'Нет нового расчёта', chip: 'Без нового решения', delivery: 'Показана последняя доступная сессия', accent: '#657181', soft: '#eef1f4', icon: Clock3 },
 } as const;
@@ -78,6 +78,7 @@ export default function Home() {
   const threeMonthMax = Math.max(...threeMonthRows.map((row) => row.r));
   const rangeSpan = Math.max(threeMonthMax - threeMonthMin, 0.0001);
   const rangePosition = Math.min(100, Math.max(0, ((selectedRate.r - threeMonthMin) / rangeSpan) * 100));
+  const rangeColor = rangePosition <= 33 ? '#13a463' : rangePosition <= 66 ? '#e6a331' : '#df594d';
   const threeMonthChange = (selectedRate.r / threeMonthRows[0].r) - 1;
   const chartChange = (selectedRate.r / chartRows[0].r) - 1;
   const cheaperThanShare = Math.round((1 - selectedSession.pr60) * 100);
@@ -92,16 +93,16 @@ export default function Home() {
     ? 'На выбранную дату нового решения нет'
     : clientState === 'none'
       ? 'Сигнал на перевод не сформирован'
-      : selectedSession.ret5 < 0
-        ? `100 ₸ стали дешевле на ${Math.abs(selectedSession.ret5 * 100).toFixed(1).replace('.', ',')}%`
-        : `100 ₸ стали дороже на ${(selectedSession.ret5 * 100).toFixed(1).replace('.', ',')}%`;
+      : clientState === 'closing'
+        ? `100 ₸ начали дорожать: ${percent(selectedSession.ret1, 2)}`
+        : `Стоимость 100 ₸ снижается ${momentumStreak} ${sessionWord(momentumStreak)} подряд`;
   const clientDescription = clientState === 'no-session'
     ? `Последний модельный срез — ${ruDate.format(asDate(selectedSession.d))} Решение не переносится на другую дату или цену.`
     : clientState === 'none'
       ? `Сейчас 100 ₸ стоят ${selectedRate.r.toFixed(2).replace('.', ',')} ₽. Стоимость ниже, чем в ${cheaperThanShare}% последних 60 модельных сессий.`
-      : selectedSession.ret5 < 0
-        ? `Для получения 100 ₸ теперь нужно меньше рублей. Это выгодная для отправителя динамика, подтверждённая историей курса.`
-        : `Для получения 100 ₸ теперь нужно больше рублей. Модель учитывает эту динамику вместе с остальными признаками.`;
+      : clientState === 'closing'
+        ? `После выгодного периода стоимость пошла вверх. Это предупреждение уточняет существующий NOW и не создаёт дополнительный контакт.`
+        : `Для получения 100 ₸ нужно всё меньше рублей. За 5 сессий изменение составило ${percent(selectedSession.ret5, 1)}.`;
 
   const nowScorePassed = selectedSession.probability >= modelProfile.nowThreshold;
   const closingScorePassed = selectedSession.closingProbability >= modelProfile.closingThreshold;
@@ -181,7 +182,7 @@ export default function Home() {
           <article className="card signal-card" style={{ '--signal': state.accent, '--signal-soft': state.soft } as React.CSSProperties} aria-live="polite">
             <div className="signal-icon"><StateIcon size={23} strokeWidth={2.3} /></div>
             <div className="signal-copy"><div className="card-kicker">{state.eyebrow} · {ruDate.format(asDate(selectedDate))}</div><h2>{clientTitle}</h2><p>{clientDescription}</p><span className="signal-chip">{state.chip}</span></div>
-            <div className="signal-score"><span>Канал</span><strong>{clientState === 'now' || clientState === 'closing' ? 'Push' : 'In-app'}</strong><small>{state.delivery}</small></div>
+            <div className="signal-score"><span>Канал</span><strong>{clientState === 'closing' ? 'NOW Push' : clientState === 'now' ? 'Push' : 'In-app'}</strong><small>{state.delivery}</small></div>
           </article>
         </section>
 
@@ -196,9 +197,9 @@ export default function Home() {
           <div className="chart-legend"><span><i className="legend-line" />Исторический курс</span><span><i className="legend-marker" />Модельная сессия</span><span className="window-note">{activeWindow.note}</span></div>
           <div className="range-panel" aria-label="Диапазон курса за 3 месяца">
             <div className="range-head"><div><div className="card-kicker">3 месяца до выбранной даты</div><strong>Стоимость 100 ₸ в диапазоне</strong></div><div className={`range-change ${threeMonthChange <= 0 ? 'positive' : 'negative'}`}>{threeMonthChange <= 0 ? <TrendingDown size={17} /> : <TrendingUp size={17} />}{percent(threeMonthChange)}</div></div>
-            <div className="range-metrics"><div><span>Минимум</span><strong>{threeMonthMin.toFixed(2).replace('.', ',')} ₽</strong></div><div className="range-current"><span>Выбранная стоимость</span><strong>{selectedRate.r.toFixed(2).replace('.', ',')} ₽</strong></div><div><span>Максимум</span><strong>{threeMonthMax.toFixed(2).replace('.', ',')} ₽</strong></div></div>
-            <div className="range-track" aria-hidden="true"><div className="range-fill" style={{ width: `${rangePosition}%` }} /><i className="range-marker-dot" style={{ left: `${rangePosition}%` }} /></div>
-            <div className="range-caption"><span>{compactDate(threeMonthRows[0].d)}</span><span>чем ниже стоимость, тем больше тенге за ту же сумму</span><span>{compactDate(selectedSession.d)}</span></div>
+            <div className="range-metrics"><div><span>Минимум · выгоднее</span><strong>{threeMonthMin.toFixed(2).replace('.', ',')} ₽</strong></div><div className="range-current" style={{ '--range-color': rangeColor } as React.CSSProperties}><span>Выбранная стоимость</span><strong>{selectedRate.r.toFixed(2).replace('.', ',')} ₽</strong></div><div><span>Максимум · дороже</span><strong>{threeMonthMax.toFixed(2).replace('.', ',')} ₽</strong></div></div>
+            <div className="range-track" aria-hidden="true"><i className="range-marker-dot" style={{ left: `${rangePosition}%`, '--range-color': rangeColor } as React.CSSProperties} /></div>
+            <div className="range-caption"><span className="favorable-label">Выгоднее</span><span>чем ближе к минимуму, тем лучше для отправителя</span><span className="expensive-label">Дороже</span></div>
           </div>
         </section>
 
