@@ -534,6 +534,7 @@ button:focus-visible, a:focus-visible, input:focus-visible {
   background: #f6f7f8;
 }
 .trigger-item.active { border-color: #ccebdd; color: #14794a; background: #eef9f3; }
+.trigger-item.active.closing { border-color: #f2d6be; color: #b65b1a; background: #fff5eb; }
 .trigger-item span { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; }
 .trigger-item small { color: #78828e; font-size: 10px; line-height: 1.35; }
 .session-note {
@@ -572,6 +573,8 @@ button:focus-visible, a:focus-visible, input:focus-visible {
 .facts-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .fact-card { min-height: 190px; padding: 23px; }
 .fact-icon { --signal: #ef3124; --signal-soft: #fdeceb; width: 42px; height: 42px; border-radius: 13px; }
+.fact-card.favorable .fact-icon { --signal: #138a54; --signal-soft: #e8f7ef; }
+.fact-card.caution .fact-icon { --signal: #d8661d; --signal-soft: #fff2e8; }
 .fact-card h3 { margin: 19px 0 7px; font-size: 18px; font-weight: 640; letter-spacing: -0.025em; line-height: 1.25; }
 .fact-card p { margin: 0; color: var(--muted-foreground); font-size: 14px; line-height: 1.5; }
 
