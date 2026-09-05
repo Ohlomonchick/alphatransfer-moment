@@ -17,8 +17,6 @@ import {
   CalendarDays,
   Check,
   CircleMinus,
-  Clock3,
-  Database,
   Info,
   ShieldCheck,
   Sparkles,
@@ -127,28 +125,25 @@ const windowOptions: Array<{
 
 const signalContent = {
   n: {
-    eyebrow: 'Сигнал модели',
-    title: 'Выгодный момент для перевода',
-    description: 'Сейчас за рубль дают заметно больше тенге, чем обычно за последний месяц.',
-    chip: 'Момент выгодный',
+    eyebrow: 'Уведомление о курсе',
+    chip: 'Пуш: факт о курсе',
+    delivery: 'Пользователь получает уведомление',
     accent: '#13a463',
     soft: '#eaf8f1',
     icon: Check,
   },
   c: {
-    eyebrow: 'Сигнал модели',
-    title: 'Окно закрывается',
-    description: 'Курс отклонился от недавнего максимума. Перед переводом стоит проверить сумму к получению.',
-    chip: 'Условия изменились',
+    eyebrow: 'Состояние курса',
+    chip: 'Только в приложении',
+    delivery: 'Проактивный пуш не отправляется',
     accent: '#e46b1a',
     soft: '#fff3e9',
-    icon: Clock3,
+    icon: TrendingDown,
   },
   x: {
-    eyebrow: 'Результат модели',
-    title: 'Сигнала на эту дату нет',
-    description: 'Движение курса не прошло порог качества. Мы бы не тратили лимит уведомлений.',
-    chip: 'Без уведомления',
+    eyebrow: 'Состояние курса',
+    chip: 'Без пуша',
+    delivery: 'Порог уведомления не пройден',
     accent: '#657181',
     soft: '#eef1f4',
     icon: CircleMinus,
@@ -193,8 +188,6 @@ export default function Home() {
   const [chartWindow, setChartWindow] = useState<ChartWindow>('1m');
   const selectedIndex = Math.max(0, demoRows.findIndex((row) => row.d === selectedDate));
   const selected = demoRows[selectedIndex];
-  const state = signalContent[selected.s];
-  const SignalIcon = state.icon;
   const historyIndex = rateHistory.findIndex((row) => row.d === selectedDate);
   const activeWindow = windowOptions.find((option) => option.id === chartWindow) ?? windowOptions[1];
 
@@ -216,6 +209,53 @@ export default function Home() {
   const rangePosition = Math.min(100, Math.max(0, ((selected.r - threeMonthMin) / rangeSpan) * 100));
   const threeMonthChange = ((selected.r / threeMonthRows[0].r) - 1) * 100;
   const chartChange = ((selected.r / chartRows[0].r) - 1) * 100;
+  const threeMonthPercentile = Math.round(
+    (threeMonthRows.filter((row) => row.r <= selected.r).length / threeMonthRows.length) * 100,
+  );
+  const maxDrawdown = Math.max(0, (1 - selected.r / threeMonthMax) * 100);
+  const previous = demoRows[Math.max(0, selectedIndex - 1)];
+  const dailyChange = selectedIndex === 0 ? 0 : ((selected.r / previous.r) - 1) * 100;
+  const state = signalContent[selected.s];
+  const SignalIcon = state.icon;
+
+  const clientTitle =
+    selected.s === 'n'
+      ? `Курс выше, чем в ${threeMonthPercentile}% дней за три месяца`
+      : selected.s === 'c'
+        ? `Курс снизился от максимума на ${maxDrawdown.toFixed(1).replace('.', ',')}%`
+        : 'Явного курсового сигнала сегодня нет';
+
+  const clientDescription =
+    selected.s === 'n'
+      ? 'Это факт об историческом положении курса — без прогноза дальнейшего движения.'
+      : selected.s === 'c'
+        ? 'На экране остаются актуальный курс и его положение в диапазоне — без срочности и совета подождать.'
+        : 'Пользователь видит текущий курс и трёхмесячный диапазон без оценки «хорошо» или «плохо».';
+
+  const modelTriggers = [
+    {
+      name: 'Уровень',
+      active: selected.p >= 80 || selected.p <= 15,
+      detail: `${selected.p}-й процентиль · 30 дней`,
+    },
+    {
+      name: 'Моментум',
+      active: Math.abs(selected.t) >= 3,
+      detail: Math.abs(selected.t) >= 2 ? `${Math.abs(selected.t)} дня подряд` : 'стрика нет',
+    },
+    {
+      name: 'Динамика',
+      active: Math.abs(selected.w) >= 2,
+      detail: `${selected.w >= 0 ? '+' : ''}${selected.w.toFixed(1).replace('.', ',')}% за 7 дней`,
+    },
+    {
+      name: 'Волатильность',
+      active: Math.abs(dailyChange) >= 1.2,
+      detail: `${dailyChange >= 0 ? '+' : ''}${dailyChange.toFixed(2).replace('.', ',')}% за день`,
+    },
+  ];
+  const activeTriggerCount = modelTriggers.filter((trigger) => trigger.active).length;
+  const activeTriggerLabel = `${activeTriggerCount} ${activeTriggerCount === 1 ? 'активный триггер' : 'активных триггера'} из 4`;
 
   const moveDate = (step: number) => {
     const next = Math.min(demoRows.length - 1, Math.max(0, selectedIndex + step));
@@ -274,7 +314,7 @@ export default function Home() {
             if (window === '10d' || window === '1m' || window === '3m') setChartWindow(window);
             return {
               date: row.d,
-              signal: row.s === 'n' ? 'favorable_now' : row.s === 'c' ? 'window_closing' : 'no_signal',
+              signal: row.s === 'n' ? 'rate_level' : row.s === 'c' ? 'reversal_from_local_high' : 'no_threshold_signal',
               rate: row.r,
               strength: row.q,
             };
@@ -297,21 +337,21 @@ export default function Home() {
   const facts = [
     {
       icon: selected.w >= 0 ? TrendingUp : TrendingDown,
-      title: `${selected.w >= 0 ? '+' : ''}${selected.w.toFixed(1).replace('.', ',')}% за неделю`,
+      title: `Динамика · ${selected.w >= 0 ? '+' : ''}${selected.w.toFixed(1).replace('.', ',')}%`,
       text:
         selected.w >= 0
-          ? 'Столько добавилось к сумме в тенге за каждый рубль.'
-          : 'Столько потерял рубль к тенге за последние 7 дней.',
+          ? 'За последние 7 дней рубль укрепился к тенге.'
+          : 'За последние 7 дней рубль ослаб к тенге.',
     },
     {
       icon: Sparkles,
-      title: `${selected.p}-й процентиль`,
-      text: `Курс выше, чем в ${selected.p}% дней внутри 30-дневного окна.`,
+      title: `Уровень · ${selected.p}-й процентиль`,
+      text: `Среди 30 последних значений курс был ниже текущего в ${selected.p}% случаев.`,
     },
     {
       icon: selected.t >= 0 ? TrendingUp : TrendingDown,
-      title: trendLabel,
-      text: 'Учитываем только уже опубликованные значения — без прогноза будущего курса.',
+      title: `Моментум · ${trendLabel}`,
+      text: 'Стрик учитывает только последовательность уже опубликованных значений.',
     },
   ];
 
@@ -324,18 +364,27 @@ export default function Home() {
         </a>
         <div className="header-meta">
           <span className="live-dot" aria-hidden="true" />
-          Демо · RUB → KZT
+          RUB → KZT · История курса
         </div>
       </header>
 
       <div id="top" className="content">
         <section className="intro" aria-labelledby="page-title">
           <div>
-            <div className="overline">Историческая демонстрация</div>
-            <h1 id="page-title">Когда переводить деньги?</h1>
-            <p>Выберите дату — покажем, был ли сигнал, каким был курс и какие факты его подтверждали.</p>
+            <div className="overline">Переводы · RUB → KZT</div>
+            <h1 id="page-title">Что происходило с курсом?</h1>
+            <p>Выберите дату — покажем клиентский сигнал, историю курса и внутреннее объяснение модели.</p>
           </div>
-          <div className="data-badge"><Database size={15} /> Всё рассчитано заранее</div>
+        </section>
+
+        <section className="layer-heading" aria-labelledby="client-layer-title">
+          <span className="layer-index">1</span>
+          <div>
+            <div className="card-kicker">Клиентский слой</div>
+            <h2 id="client-layer-title">Что видит пользователь</h2>
+            <p>Только текущий курс и проверяемые факты о прошлом — без прогноза и искусственной срочности.</p>
+          </div>
+          <span className="layer-visibility">Экран приложения</span>
         </section>
 
         <section className="control-grid" aria-label="Выбор даты и результат">
@@ -374,9 +423,9 @@ export default function Home() {
             </div>
             <div className="preset-row" aria-label="Быстрые сценарии">
               <span>Примеры:</span>
-              <button type="button" onClick={() => setSelectedDate('2026-05-29')}>выгодный</button>
-              <button type="button" onClick={() => setSelectedDate('2026-06-02')}>окно закрывается</button>
-              <button type="button" onClick={() => setSelectedDate('2026-06-14')}>без сигнала</button>
+              <button type="button" onClick={() => setSelectedDate('2026-05-29')}>сигнал уровня</button>
+              <button type="button" onClick={() => setSelectedDate('2026-06-02')}>после максимума</button>
+              <button type="button" onClick={() => setSelectedDate('2026-06-14')}>обычный диапазон</button>
             </div>
           </div>
 
@@ -388,13 +437,14 @@ export default function Home() {
             <div className="signal-icon"><SignalIcon size={23} strokeWidth={2.3} /></div>
             <div className="signal-copy">
               <div className="card-kicker">{state.eyebrow} · {ruDate.format(asDate(selected.d))}</div>
-              <h2>{state.title}</h2>
-              <p>{state.description}</p>
+              <h2>{clientTitle}</h2>
+              <p>{clientDescription}</p>
               <span className="signal-chip">{state.chip}</span>
             </div>
             <div className="signal-score">
-              <span>Сила сигнала</span>
-              <strong>{selected.q}%</strong>
+              <span>Канал</span>
+              <strong>{selected.s === 'n' ? 'Push' : 'In-app'}</strong>
+              <small>{state.delivery}</small>
             </div>
           </article>
         </section>
@@ -431,7 +481,7 @@ export default function Home() {
             </div>
             <span>изменение от начала окна</span>
           </div>
-          <div className="chart-wrap" role="img" aria-label={`График курса вокруг ${ruDate.format(asDate(selected.d))}`}>
+          <figure className="chart-wrap" aria-label={`График курса вокруг ${ruDate.format(asDate(selected.d))}`}>
             <ResponsiveContainer
               width="100%"
               height="100%"
@@ -454,7 +504,7 @@ export default function Home() {
                 <Area type="monotone" dataKey="r" stroke="#ef3124" strokeWidth={3} fill="url(#rateFill)" activeDot={{ r: 6, fill: '#fff', stroke: '#ef3124', strokeWidth: 3 }} />
               </AreaChart>
             </ResponsiveContainer>
-          </div>
+          </figure>
           <div className="chart-legend">
             <span><i className="legend-line" />Исторический курс</span>
             <span><i className="legend-marker" />Выбранная дата</span>
@@ -489,12 +539,41 @@ export default function Home() {
         </section>
 
         <section className="facts-section" aria-labelledby="facts-title">
-          <div className="section-heading">
+          <div className="layer-heading interpretation-heading">
+            <span className="layer-index dark">2</span>
             <div>
-              <div className="card-kicker">Объяснение</div>
-              <h2 id="facts-title">Что увидела модель</h2>
+              <div className="card-kicker">Служебный слой</div>
+              <h2 id="facts-title">Интерпретация модели</h2>
+              <p>Сила сигнала, активные правила и факты, из которых сложилось решение.</p>
             </div>
-            <span><ShieldCheck size={17} /> Только факты о прошлом и настоящем</span>
+            <span className="layer-visibility internal"><ShieldCheck size={16} /> Не показывается клиенту</span>
+          </div>
+          <article className="card model-overview">
+            <div className="strength-block">
+              <div className="card-kicker">Сила сигнала</div>
+              <div className="strength-value"><strong>{selected.q}%</strong><span>{activeTriggerLabel}</span></div>
+              <div className="strength-track" aria-label={`Сила сигнала ${selected.q}%`}>
+                <i style={{ width: `${selected.q}%` }} />
+              </div>
+            </div>
+            <div className="trigger-block">
+              <div className="card-kicker">Статус правил</div>
+              <div className="trigger-grid">
+                {modelTriggers.map((trigger) => (
+                  <div className={`trigger-item ${trigger.active ? 'active' : ''}`} key={trigger.name}>
+                    <span>
+                      {trigger.active ? <Check size={14} aria-hidden="true" /> : <CircleMinus size={14} aria-hidden="true" />}
+                      {trigger.name}
+                    </span>
+                    <small>{trigger.active ? 'Сработал' : 'Не сработал'} · {trigger.detail}</small>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </article>
+          <div className="evidence-heading">
+            <h3>Что увидела модель</h3>
+            <span>Факты о прошлом и настоящем</span>
           </div>
           <div className="facts-grid">
             {facts.map((fact) => {
@@ -512,7 +591,7 @@ export default function Home() {
 
         <aside className="note" aria-label="О демо-данных">
           <Info size={18} />
-          <p><strong>Это продуктовый прототип.</strong> Курс, сигналы и объяснения заранее сохранены в локальной демо-таблице. Сайт не запускает модель и не обращается к внешним сервисам.</p>
+          <p>Курс носит информационный характер, не является публичной офертой и может измениться. Итоговый курс фиксируется в момент перевода.</p>
         </aside>
       </div>
     </main>
