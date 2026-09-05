@@ -57,7 +57,7 @@ function RateTooltip({ active, payload }: { active?: boolean; payload?: Array<{ 
 }
 
 export default function Home() {
-  const [selectedDate, setSelectedDate] = useState('2026-06-02');
+  const [selectedDate, setSelectedDate] = useState('2026-09-05');
   const [chartWindow, setChartWindow] = useState<ChartWindow>('1m');
   const selectedSession = closestSession(selectedDate);
   const isSessionDay = selectedSession.d === selectedDate;
@@ -179,7 +179,7 @@ export default function Home() {
               <label className="date-field"><CalendarDays size={20} aria-hidden="true" /><span className="sr-only">Выберите дату</span><input type="date" value={selectedDate} min={modelRows[0].d} max={modelRows[modelRows.length - 1].d} onChange={(event) => setSelectedDate(event.target.value)} /></label>
               <button className="icon-button" type="button" onClick={() => moveDate(1)} disabled={selectedDecisionIndex === modelRows.length - 1} aria-label="Следующая модельная сессия"><ArrowRight size={20} /></button>
             </div>
-            <div className="preset-row" aria-label="Быстрые сценарии"><span>Примеры:</span><button type="button" onClick={() => setSelectedDate('2026-05-21')}>NOW · дешевеет</button><button type="button" onClick={() => setSelectedDate('2026-06-02')}>NOW + CLOSING</button><button type="button" onClick={() => setSelectedDate('2026-06-04')}>высокий ранг · cooldown</button></div>
+            <div className="preset-row" aria-label="Быстрые сценарии"><span>Примеры:</span><button type="button" onClick={() => setSelectedDate('2026-05-22')}>NOW · дешевеет</button><button type="button" onClick={() => setSelectedDate('2026-06-04')}>NOW + CLOSING</button><button type="button" onClick={() => setSelectedDate('2026-08-04')}>высокий ранг · cooldown</button></div>
           </div>
           <article className="card signal-card" style={{ '--signal': state.accent, '--signal-soft': state.soft } as React.CSSProperties} aria-live="polite">
             <div className="signal-icon"><StateIcon size={23} strokeWidth={2.3} /></div>
