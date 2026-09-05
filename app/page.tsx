@@ -19,7 +19,7 @@ const windowOptions = [
 ];
 
 const stateContent = {
-  now: { eyebrow: 'Уведомление о курсе', chip: 'Push · факт о курсе', delivery: 'Пользователь получает уведомление', accent: '#13a463', soft: '#eaf8f1', icon: Check },
+  now: { eyebrow: 'Уведомление о курсе', chip: 'Push · выгодный момент', delivery: 'Пользователь получает уведомление', accent: '#13a463', soft: '#eaf8f1', icon: Check },
   closing: { eyebrow: 'Уточнение к сигналу NOW', chip: 'Не отдельный пуш · CLOSING', delivery: 'Уточняет уже выбранный контакт NOW', accent: '#e46b1a', soft: '#fff3e9', icon: TrendingUp },
   none: { eyebrow: 'Состояние курса', chip: 'Без пуша', delivery: 'Проактивного уведомления нет', accent: '#657181', soft: '#eef1f4', icon: CircleMinus },
   'no-session': { eyebrow: 'Нет нового расчёта', chip: 'Без нового решения', delivery: 'Показана последняя доступная сессия', accent: '#657181', soft: '#eef1f4', icon: Clock3 },
@@ -94,17 +94,17 @@ export default function Home() {
     : clientState === 'none'
       ? 'Сигнал на перевод не сформирован'
       : clientState === 'closing'
-        ? `100 ₸ начали дорожать: ${percent(selectedSession.ret1, 2)}`
-        : `Стоимость 100 ₸ снижается ${momentumStreak} ${sessionWord(momentumStreak)} подряд`;
+        ? 'Выгодное окно может закрываться'
+        : 'Выгодный момент для перевода';
   const clientDescription = clientState === 'no-session'
     ? `Последний модельный срез — ${ruDate.format(asDate(selectedSession.d))} Решение не переносится на другую дату или цену.`
     : clientState === 'none'
       ? `Сейчас 100 ₸ стоят ${selectedRate.r.toFixed(2).replace('.', ',')} ₽. Стоимость ниже, чем в ${cheaperThanShare}% последних 60 модельных сессий.`
       : clientState === 'closing'
-        ? `После выгодного периода стоимость пошла вверх. Это предупреждение уточняет существующий NOW и не создаёт дополнительный контакт.`
-        : `Для получения 100 ₸ нужно всё меньше рублей. За 5 сессий изменение составило ${percent(selectedSession.ret5, 1)}.`;
+        ? `После выбранного NOW стоимость 100 ₸ начала расти: ${percent(selectedSession.ret1, 2)} за сессию. Уточнение не создаёт дополнительный контакт.`
+        : `Модель отмечает текущую стоимость 100 ₸ как выгодную точку на горизонте трёх сессий. За 5 сессий курс изменился на ${percent(selectedSession.ret5, 1)}.`;
 
-  const nowScorePassed = selectedSession.probability >= modelProfile.nowThreshold;
+  const nowRankPassed = selectedSession.rankScore >= modelProfile.nowRankThreshold;
   const closingScorePassed = selectedSession.closingProbability >= modelProfile.closingThreshold;
   const positiveRet1 = selectedSession.ret1 > 0;
   const previousContacts = modelRows.slice(0, selectedDecisionIndex).filter((row) => row.candidate);
@@ -112,19 +112,21 @@ export default function Home() {
   const sessionGap = previousContact ? selectedSession.session - previousContact.session : Number.POSITIVE_INFINITY;
   const cooldownPassed = sessionGap > modelProfile.cooldownSessions;
   const contactsThisWeek = previousContacts.filter((row) => weekStart(row.d) === weekStart(selectedSession.d)).length;
-  const weeklyLimitPassed = contactsThisWeek < 2;
+  const weeklyLimitPassed = contactsThisWeek < modelProfile.maxContactsPerWeek;
   const modelRules = [
-    { name: 'Порог NOW', active: nowScorePassed, tone: 'neutral', detail: `${score(selectedSession.probability)} ${nowScorePassed ? '≥' : '<'} ${score(modelProfile.nowThreshold)}` },
+    { name: 'Ранг NOW за 63 сессии', active: nowRankPassed, tone: 'neutral', detail: `${score(selectedSession.rankScore)} ${nowRankPassed ? '≥' : '<'} ${score(modelProfile.nowRankThreshold)}` },
     { name: 'Cooldown', active: cooldownPassed, tone: 'neutral', detail: previousContact ? `${sessionGap} сесс. после контакта · нужно > ${modelProfile.cooldownSessions}` : 'предыдущих контактов нет' },
-    { name: 'Лимит недели', active: weeklyLimitPassed, tone: 'neutral', detail: `${contactsThisWeek} из 2 контактов до этой сессии` },
-    { name: 'Порог CLOSING', active: closingScorePassed, tone: 'closing', detail: `${score(selectedSession.closingProbability)} ${closingScorePassed ? '≥' : '<'} ${score(modelProfile.closingThreshold)}` },
-    { name: 'Разворот ret1', active: positiveRet1, tone: 'closing', detail: `${percent(selectedSession.ret1, 2)} · стоимость 100 KZT в RUB` },
+    { name: 'Лимит недели', active: weeklyLimitPassed, tone: 'neutral', detail: `${contactsThisWeek} из ${modelProfile.maxContactsPerWeek} контактов до этой сессии` },
+    { name: 'Базовый сигнал NOW', active: selectedSession.candidate, tone: 'closing', detail: 'CLOSING может только уточнить выбранный NOW' },
+    { name: 'Новая голова CLOSING H3', active: closingScorePassed, tone: 'closing', detail: `${score(selectedSession.closingProbability)} ${closingScorePassed ? '≥' : '<'} ${score(modelProfile.closingThreshold)}` },
+    { name: 'Рост стоимости ret1', active: positiveRet1, tone: 'closing', detail: `${percent(selectedSession.ret1, 2)} · условие CLOSING` },
   ];
   const verdict = selectedSession.candidate ? (selectedSession.closing ? 'NOW + CLOSING' : 'NOW') : 'NONE';
   const featureFacts = [
-    { tone: selectedSession.ret1 < 0 ? 'favorable' : 'caution', icon: selectedSession.ret1 < 0 ? TrendingDown : TrendingUp, title: `Моментум · стоимость ${selectedSession.ret1 < 0 ? 'снижается' : 'растёт'} ${momentumStreak} ${sessionWord(momentumStreak)} подряд`, text: selectedSession.ret1 < 0 ? `За 5 сессий: ${percent(selectedSession.ret5, 1)}. За 100 ₸ нужно всё меньше рублей — для отправителя это хороший знак.` : `За 5 сессий: ${percent(selectedSession.ret5, 1)}. За 100 ₸ снова нужно больше рублей — окно может закрываться.` },
+    { tone: selectedSession.ret1 < 0 ? 'favorable' : 'caution', icon: selectedSession.ret1 < 0 ? TrendingDown : TrendingUp, title: `Моментум · стоимость ${selectedSession.ret1 < 0 ? 'снижается' : 'растёт'} ${momentumStreak} ${sessionWord(momentumStreak)} подряд`, text: selectedSession.ret1 < 0 ? `За 5 сессий: ${percent(selectedSession.ret5, 1)}. За 100 ₸ нужно всё меньше рублей — для отправителя это хороший знак.` : `За 5 сессий: ${percent(selectedSession.ret5, 1)}. Односессионный рост — отдельное условие новой головы CLOSING.` },
     { tone: 'neutral', icon: Sparkles, title: `Стоимость ниже, чем в ${cheaperThanShare}% сессий`, text: `Признак pr60: ${Math.round(selectedSession.pr60 * 100)}-й процентиль стоимости 100 KZT в рублях.` },
     { tone: 'neutral', icon: TrendingUp, title: `Волатильность vol20 · ${score(selectedSession.vol20)}`, text: 'Историческая изменчивость за 20 сессий — один из входов TabM.' },
+    { tone: 'neutral', icon: ShieldCheck, title: `${modelProfile.featureCount} признака в профиле FULL33`, text: 'Модель также учитывает OXR, курсы Halyk, Treasury и индикаторы доступности данных.' },
   ];
 
   const moveDate = (step: number) => {
@@ -150,7 +152,7 @@ export default function Home() {
         if (!row) throw new Error('Дата вне доступных модельных сессий');
         setSelectedDate(row.d);
         if (window === '10d' || window === '1m' || window === '3m') setChartWindow(window);
-        return { date: row.d, verdict: row.candidate ? (row.closing ? 'NOW+CLOSING' : 'NOW') : 'NONE', probability: row.probability, closing_probability: row.closingProbability, model_config: modelProfile.configId };
+        return { date: row.d, verdict: row.candidate ? (row.closing ? 'NOW+CLOSING' : 'NOW') : 'NONE', probability: row.probability, rank_score: row.rankScore, closing_probability: row.closingProbability, model_config: modelProfile.configId };
       },
     }, { signal: lifecycle.signal })).catch(() => undefined);
     return () => lifecycle.abort();
@@ -177,7 +179,7 @@ export default function Home() {
               <label className="date-field"><CalendarDays size={20} aria-hidden="true" /><span className="sr-only">Выберите дату</span><input type="date" value={selectedDate} min={modelRows[0].d} max={modelRows[modelRows.length - 1].d} onChange={(event) => setSelectedDate(event.target.value)} /></label>
               <button className="icon-button" type="button" onClick={() => moveDate(1)} disabled={selectedDecisionIndex === modelRows.length - 1} aria-label="Следующая модельная сессия"><ArrowRight size={20} /></button>
             </div>
-            <div className="preset-row" aria-label="Быстрые сценарии"><span>Примеры:</span><button type="button" onClick={() => setSelectedDate('2026-05-21')}>NOW · дешевеет</button><button type="button" onClick={() => setSelectedDate('2026-06-02')}>NOW + CLOSING</button><button type="button" onClick={() => setSelectedDate('2026-06-04')}>порог без контакта</button></div>
+            <div className="preset-row" aria-label="Быстрые сценарии"><span>Примеры:</span><button type="button" onClick={() => setSelectedDate('2026-05-21')}>NOW · дешевеет</button><button type="button" onClick={() => setSelectedDate('2026-06-02')}>NOW + CLOSING</button><button type="button" onClick={() => setSelectedDate('2026-06-04')}>высокий ранг · cooldown</button></div>
           </div>
           <article className="card signal-card" style={{ '--signal': state.accent, '--signal-soft': state.soft } as React.CSSProperties} aria-live="polite">
             <div className="signal-icon"><StateIcon size={23} strokeWidth={2.3} /></div>
@@ -204,14 +206,14 @@ export default function Home() {
         </section>
 
         <section className="facts-section" aria-labelledby="facts-title">
-          <div className="layer-heading interpretation-heading"><span className="layer-index dark">2</span><div><div className="card-kicker">Служебный слой</div><h2 id="facts-title">Интерпретация модели</h2><p>Вердикт, scores и правила ровно из выбранного профиля final_solution.</p></div><span className="layer-visibility internal"><ShieldCheck size={16} /> Не показывается клиенту</span></div>
+          <div className="layer-heading interpretation-heading"><span className="layer-index dark">2</span><div><div className="card-kicker">Служебный слой</div><h2 id="facts-title">Интерпретация модели</h2><p>Новый профиль TabM KZT H3, причинный rank80 и отдельная голова CLOSING H3.</p></div><span className="layer-visibility internal"><ShieldCheck size={16} /> Не показывается клиенту</span></div>
           {!isSessionDay && <div className="session-note"><Clock3 size={17} />Для выбранной календарной даты нет новой сессии. Ниже — срез за {compactDate(selectedSession.d)}.</div>}
           <article className="card model-overview">
-            <div className="strength-block"><div className="card-kicker">Вердикт финальной политики</div><div className="verdict-row"><strong>{verdict}</strong><span>сессия #{selectedSession.session}</span></div><div className="score-pair"><div><span>NOW-score</span><strong>{score(selectedSession.probability)}</strong><small>порог {score(modelProfile.nowThreshold)}</small></div><div><span>CLOSING-score</span><strong>{score(selectedSession.closingProbability)}</strong><small>порог {score(modelProfile.closingThreshold)}</small></div></div></div>
+            <div className="strength-block"><div className="card-kicker">Вердикт финальной политики</div><div className="verdict-row"><strong>{verdict}</strong><span>сессия #{selectedSession.session}</span></div><div className="score-pair"><div><span>NOW вероятность</span><strong>{score(selectedSession.probability)}</strong><small>ранг {score(selectedSession.rankScore)}</small></div><div><span>CLOSING вероятность</span><strong>{score(selectedSession.closingProbability)}</strong><small>порог {score(modelProfile.closingThreshold)}</small></div></div></div>
             <div className="trigger-block"><div className="card-kicker">Фактические условия решения</div><div className="trigger-grid">{modelRules.map((rule) => <div className={`trigger-item ${rule.active ? 'active' : ''} ${rule.tone === 'closing' ? 'closing' : ''}`} key={rule.name}><span>{rule.active ? <Check size={14} aria-hidden="true" /> : <CircleMinus size={14} aria-hidden="true" />}{rule.name}</span><small>{rule.active ? 'Выполнено' : 'Не выполнено'} · {rule.detail}</small></div>)}</div></div>
           </article>
           <div className="model-provenance"><span>{modelProfile.model}</span><span>{modelProfile.configId}</span><span>policy: {modelProfile.policy}</span></div>
-          <div className="evidence-heading"><h3>Что поступило на вход модели</h3><span>Значения признаков, а не придуманные постфактум причины</span></div>
+          <div className="evidence-heading"><h3>Что видит модель</h3><span>Проверяемые значения части из {modelProfile.featureCount} входных признаков</span></div>
           <div className="facts-grid">{featureFacts.map((fact) => { const FactIcon = fact.icon; return <article className={`card fact-card ${fact.tone}`} key={fact.title}><div className="fact-icon"><FactIcon size={21} /></div><h3>{fact.title}</h3><p>{fact.text}</p></article>; })}</div>
         </section>
 
